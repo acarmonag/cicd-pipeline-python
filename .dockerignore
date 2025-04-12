@@ -20,4 +20,4 @@ acceptance_coverage.xml
 Entregable2-images
 sonar-project.properties
 pytest.ini
-tokern.txt
+token.txt
