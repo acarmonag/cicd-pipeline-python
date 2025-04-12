@@ -1,9 +1,0 @@
-docker login -u acarmonag
-dckr_pat_zKMJl-GFRY_NXpv6zzMH251qQL8
-
-
-acarmonag
-acarmonag
-
-
-3151302157485437b33174a27cdfbefa9e0bb5c9
