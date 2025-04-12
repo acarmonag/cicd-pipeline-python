@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calculadora</title>
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Racing Sans One', Arial, sans-serif;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-image: url('https://i.imgur.com/JZXHq8F.png');
+            background-position: right bottom;
+            background-repeat: no-repeat;
+            background-size: 150px;
+            background-attachment: fixed;
+        }
+        
+        h1 {
+            color: #e30b0b;
+            text-align: center;
+            text-transform: uppercase;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            border-bottom: 3px solid #e30b0b;
+            padding-bottom: 10px;
+        }
+        
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border: 2px solid #e30b0b;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            border-color: #e30b0b;
+            outline: none;
+        }
+        
+        button {
+            background-color: #e30b0b;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            text-transform: uppercase;
+            width: 100%;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #b20808;
+        }
+        
+        h2 {
+            color: #e30b0b;
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+            border-left: 5px solid #e30b0b;
+        }
+        
+        /* Lightning McQueen number 95 */
+        form::after {
+            content: "95";
+            position: absolute;
+            right: 30px;
+            top: 20px;
+            font-size: 40px;
+            font-weight: bold;
+            color: #e30b0b;
+            opacity: 0.3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Calculadora</h1>
+    <form method="post">
+        <input type="text" name="num1" placeholder="Número 1" required>
+        <input type="text" name="num2" placeholder="Número 2" required>
+        <select name="operacion">
+            <option value="sumar">Sumar</option>
+            <option value="restar">Restar</option>
+            <option value="multiplicar">Multiplicar</option>
+            <option value="dividir">Dividir</option>
+        </select>
+        <button type="submit">Calcular</button>
+    </form>
+    {% if resultado is not none %}
+        <h2>Resultado: {{ resultado }}</h2>
+    {% endif %}
+</body>
+</html>
