@@ -52,8 +52,7 @@ jobs:
       - name: Get ECR Repository URI
         id: get_ecr_uri
         run: |
-          ECR_URI=$(aws cloudformation describe-stacks --stack-name calculadora-staging-stack --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text --region us-east-1)
-          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora" >> $GITHUB_OUTPUT
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -97,7 +96,7 @@ jobs:
       - name: Build and push Docker image to ECR
         run: |
           IMAGE_TAG=${{ github.sha }}
-          ECR_URI="${{ steps.get_ecr_uri.outputs.ecr_uri }}"
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
           docker build -t $ECR_URI:$IMAGE_TAG -t $ECR_URI:prod .
           docker push $ECR_URI:$IMAGE_TAG
           docker push $ECR_URI:prod
