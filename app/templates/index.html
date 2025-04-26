@@ -2,101 +2,144 @@
 <html lang="en">
 <head>
     <title>Calculadora</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
-            font-family: 'Arial', sans-serif;
-            background-color: #e8f5e9;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #e8f5e9 0%, #b2dfdb 100%);
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
+        }
+
+        .container {
+            margin-top: 60px;
+            background: rgba(255,255,255,0.95);
+            padding: 40px 30px 30px 30px;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px 0 rgba(60, 60, 60, 0.18);
+            max-width: 420px;
+            width: 100%;
         }
 
         h1 {
-            color: #d60e0e;
+            color: #388e3c;
             text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
+            margin-bottom: 35px;
+            font-size: 2.7em;
+            letter-spacing: 2px;
+            font-weight: 700;
+            text-shadow: 1px 2px 8px #b2dfdb55;
         }
 
         form {
-            background-color: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
         }
 
         input, select {
             width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #81c784;
-            border-radius: 4px;
+            padding: 12px;
+            margin: 0;
+            border: 1.5px solid #81c784;
+            border-radius: 6px;
+            font-size: 1.1em;
+            background: #f9fbe7;
+            transition: border 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: #388e3c;
+            outline: none;
         }
 
         button {
             width: 100%;
-            padding: 10px;
-            background-color: #4caf50;
+            padding: 12px;
+            background: linear-gradient(90deg, #43a047 0%, #66bb6a 100%);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
+            font-size: 1.15em;
+            font-weight: 600;
             cursor: pointer;
+            box-shadow: 0 2px 8px #388e3c22;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background: linear-gradient(90deg, #388e3c 0%, #43a047 100%);
+            transform: translateY(-2px) scale(1.03);
         }
 
         .resultado {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #c8e6c9;
-            border-radius: 4px;
+            margin-top: 28px;
+            padding: 18px 10px;
+            background: linear-gradient(90deg, #c8e6c9 0%, #b2dfdb 100%);
+            border-radius: 8px;
             text-align: center;
+            box-shadow: 0 2px 8px #388e3c22;
+            animation: fadeIn 0.7s;
         }
 
         .resultado h2 {
             margin: 0;
             color: #1b5e20;
+            font-size: 1.5em;
+            font-weight: 700;
+            letter-spacing: 1px;
         }
         
         .note {
-            font-size: 0.8em;
-            color: #555;
-            margin-top: 5px;
+            font-size: 0.95em;
+            color: #388e3c;
+            margin-top: 2px;
+            margin-bottom: -8px;
+            text-align: center;
         }
-    </style>
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+    </meta>
 </head>
 <body>
-    <h1>Calculadora</h1>
-    <form method="post">
-        <input type="text" name="num1" placeholder="Número 1" required>
-        <input type="text" name="num2" placeholder="Número 2" required>
-        <select name="operacion">
-            <option value="sumar">Sumar</option>
-            <option value="restar">Restar</option>
-            <option value="multiplicar">Multiplicar</option>
-            <option value="dividir">Dividir</option>
-            <option value="potencia">Potencia</option>
-            <option value="raiz_cuadrada">Raíz Cuadrada</option>
-            <option value="valor_absoluto">Valor Absoluto</option>
-            <option value="factorial">Factorial</option>
-            <option value="logaritmo_natural">Logaritmo Natural</option>
-        </select>
-        <p class="note">* Para Raíz Cuadrada, Valor Absoluto, Factorial y Logaritmo Natural solo se utiliza el primer número.</p>
-        <button type="submit">Calcular</button>
-    </form>
-    {% if resultado is not none %}
-    <div class="resultado">
-        <h2>
-        {% if resultado is string %}
-            {{ resultado }}
-        {% else %}
-            Resultado: {{ "%.1f"|format(resultado) }}
+    <div class="container">
+        <h1>Calculadora</h1>
+        <form method="post">
+            <input type="text" name="num1" placeholder="Número 1" required autocomplete="off">
+            <input type="text" name="num2" placeholder="Número 2" required autocomplete="off">
+            <select name="operacion">
+                <option value="sumar">Sumar</option>
+                <option value="restar">Restar</option>
+                <option value="multiplicar">Multiplicar</option>
+                <option value="dividir">Dividir</option>
+                <option value="potencia">Potencia</option>
+                <option value="raiz_cuadrada">Raíz Cuadrada</option>
+                <option value="valor_absoluto">Valor Absoluto</option>
+                <option value="factorial">Factorial</option>
+                <option value="logaritmo_natural">Logaritmo Natural</option>
+            </select>
+            <p class="note">* Para Raíz Cuadrada, Valor Absoluto, Factorial y Logaritmo Natural solo se utiliza el primer número.</p>
+            <button type="submit">Calcular</button>
+        </form>
+        {% if resultado is not none %}
+        <div class="resultado">
+            <h2>
+            {% if resultado is string %}
+                {{ resultado }}
+            {% else %}
+                Resultado: {{ "%.1f"|format(resultado) }}
+            {% endif %}
+            </h2>
+        </div>
         {% endif %}
-        </h2>
     </div>
-    {% endif %}
 </body>
 </html>
