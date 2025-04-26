@@ -29,20 +29,6 @@ jobs:
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --template-body file://template.yaml
 
-      - name: Deploy CloudFormation Stack (Crea ECR)
-        run: |
-            aws cloudformation deploy \
-            --template-file template.yaml \
-            --stack-name calculadora-staging-stack \
-            --parameter-overrides \
-              EnvironmentName=staging \
-              LabRoleArn="dummy" \
-              VpcId="vpc-12345678" \
-              SubnetIds="subnet-12345678,subnet-87654321" \
-              DockerImageUri="placeholder" \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --no-fail-on-empty-changes
-
   # 2. Obtiene el URI de ECR y hace build/push de la imagen
   build-test-publish:
     needs: deploy-cfn-base
@@ -149,7 +135,7 @@ jobs:
 
       - name: Deploy CloudFormation Staging Stack
         run: |
-          IMAGE_URI="${{ needs.build-test-publish.outputs.ecr_uri }}:${{ needs.build-test-publish.outputs.image_tag }}"
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:latest"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-staging-stack \
