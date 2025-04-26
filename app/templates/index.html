@@ -1,94 +1,70 @@
 <!DOCTYPE html>
-<html:lang="es">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es" lang="es">
+<html lang="en">
 <head>
     <title>Calculadora</title>
     <style>
         body {
-            background-color: #f5f5f5;
-            font-family: 'Racing Sans One', Arial, sans-serif;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
+            font-family: 'Arial', sans-serif;
+            background-color: #e8f5e9;
+            margin: 0;
             padding: 20px;
-            background-image: url('https://i.imgur.com/JZXHq8F.png');
-            background-position: right bottom;
-            background-repeat: no-repeat;
-            background-size: 150px;
-            background-attachment: fixed;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
         }
-        
+
         h1 {
-            color: #e30b0b;
+            color: #d60e0e;
             text-align: center;
-            text-transform: uppercase;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-            border-bottom: 3px solid #e30b0b;
-            padding-bottom: 10px;
+            margin-bottom: 30px;
+            font-size: 2.5em;
         }
-        
+
         form {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            border: 2px solid #e30b0b;
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
         }
-        
+
         input, select {
             width: 100%;
             padding: 10px;
-            margin-bottom: 15px;
-            border: 2px solid #ccc;
-            border-radius: 5px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            margin: 10px 0;
+            border: 1px solid #81c784;
+            border-radius: 4px;
         }
-        
-        input:focus, select:focus {
-            border-color: #e30b0b;
-            outline: none;
-        }
-        
+
         button {
-            background-color: #e30b0b;
+            width: 100%;
+            padding: 10px;
+            background-color: #4caf50;
             color: white;
             border: none;
-            padding: 12px 20px;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
-            text-transform: uppercase;
-            width: 100%;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            transition: background-color 0.3s;
         }
-        
-        button:hover {
-            background-color: #b20808;
-        }
-        
-        h2 {
-            color: #e30b0b;
-            text-align: center;
+
+        .resultado {
             margin-top: 20px;
-            padding: 10px;
-            background-color: #fff;
-            border-radius: 5px;
-            border-left: 5px solid #e30b0b;
+            padding: 15px;
+            background-color: #c8e6c9;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .resultado h2 {
+            margin: 0;
+            color: #1b5e20;
         }
         
-        /* Lightning McQueen number 95 */
-        form::after {
-            content: "95";
-            position: absolute;
-            right: 30px;
-            top: 20px;
-            font-size: 40px;
-            font-weight: bold;
-            color: #e30b0b;
-            opacity: 0.3;
+        .note {
+            font-size: 0.8em;
+            color: #555;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -102,11 +78,25 @@
             <option value="restar">Restar</option>
             <option value="multiplicar">Multiplicar</option>
             <option value="dividir">Dividir</option>
+            <option value="potencia">Potencia</option>
+            <option value="raiz_cuadrada">Raíz Cuadrada</option>
+            <option value="valor_absoluto">Valor Absoluto</option>
+            <option value="factorial">Factorial</option>
+            <option value="logaritmo_natural">Logaritmo Natural</option>
         </select>
+        <p class="note">* Para Raíz Cuadrada, Valor Absoluto, Factorial y Logaritmo Natural solo se utiliza el primer número.</p>
         <button type="submit">Calcular</button>
     </form>
     {% if resultado is not none %}
-        <h2>Resultado: {{ resultado }}</h2>
+    <div class="resultado">
+        <h2>
+        {% if resultado is string %}
+            {{ resultado }}
+        {% else %}
+            Resultado: {{ "%.1f"|format(resultado) }}
+        {% endif %}
+        </h2>
+    </div>
     {% endif %}
 </body>
-</html:>
+</html>

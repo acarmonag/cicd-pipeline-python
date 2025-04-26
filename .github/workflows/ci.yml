@@ -1,5 +1,7 @@
-name: CI Pipeline
+# Nombre del Workflow
+name: CI/CD Pipeline AWS ECS con CloudFormation
 
+# Disparadores del Workflow
 on:
   push:
     branches:
@@ -10,16 +12,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest  # Usamos Ubuntu
+  # -------------------------------------
+  # Job de Setup AWS y obtener ECR URI
+  # -------------------------------------
+  setup-aws:
+    runs-on: ubuntu-latest
+    outputs:
+      ecr_uri: ${{ steps.get_ecr_uri.outputs.ecr_uri }}
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Get ECR Repository URI
+        id: get_ecr_uri
+        run: |
+          ECR_URI=$(aws cloudformation describe-stacks --stack-name calculadora-staging-stack --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text --region us-east-1)
+          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de CI (Build, Test, Publish Docker Image en ECR)
+  # -------------------------------------
+  build-test-publish:
+    needs: setup-aws
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.set_tag.outputs.image_tag }}
+      ecr_uri: ${{ needs.setup-aws.outputs.ecr_uri }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # Reemplaza con tu versión de Python
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -27,7 +59,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Black (Formatter)
-        run: black app --check  # --check solo verifica, no modifica
+        run: black app --check
 
       - name: Run Pylint (Linter)
         run: pylint app --output-format=text --fail-under=9 > pylint-report.txt || true
@@ -37,15 +69,7 @@ jobs:
 
       - name: Run Unit Tests with pytest and Coverage
         run: |
-          pytest --ignore=tests/test_acceptance_app.py  # Genera un informe XML para SonarCloud
-
-      - name: Run Acceptance Tests
-        env:
-           APP_BASE_URL: http://localhost:8000
-        run: |
-          gunicorn --workers=2 --bind=0.0.0.0:8000 app.app:app &
-          sleep 10
-          pytest tests/test_acceptance_app.py --cov-report=xml:acceptance_coverage.xml --html=acceptance_report.html # Genera un informe XML con otro nombre, para no sobre-escribir el anterior de  las pruebas unitarias
+          pytest --ignore=tests/test_acceptance_app.py --ignore=tests/test_smoke_app.py
 
       - name: Upload Test Reports Artifacts
         uses: actions/upload-artifact@v4
@@ -55,39 +79,289 @@ jobs:
           path: |
             htmlcov/
             report.html
-        
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Automáticamente proporcionado
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # El secreto que creaste
-    
-      # --- Pasos de Docker ---
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Set up QEMU
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/setup-qemu-action@v3
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Set up Docker Buildx
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/setup-buildx-action@v3
+      - name: Build and push Docker image to ECR
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t ${{ needs.setup-aws.outputs.ecr_uri }}:$IMAGE_TAG -t ${{ needs.setup-aws.outputs.ecr_uri }}:prod .
+          docker push ${{ needs.setup-aws.outputs.ecr_uri }}:$IMAGE_TAG
+          docker push ${{ needs.setup-aws.outputs.ecr_uri }}:prod
 
-      - name: Login to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
+      - name: Set image tag output
+        id: set_tag
+        run: echo "image_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de Despliegue CloudFormation Staging
+  # -------------------------------------
+  deploy-cfn-staging:
+    needs: build-test-publish
+    runs-on: ubuntu-latest
+    outputs:
+      alb_url_staging: ${{ steps.get_stack_outputs.outputs.alb_url }}
+      cluster_name_staging: "calculadora-staging-cluster"
+      service_name_staging: "calculadora-staging-service"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate CloudFormation Template
+        run: aws cloudformation validate-template --template-body file://template.yaml
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
 
-      - name: Build and push Docker image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v5
+      - name: Deploy CloudFormation Staging Stack
+        run: |
+          IMAGE_URI="${{ needs.build-test-publish.outputs.ecr_uri }}:${{ needs.build-test-publish.outputs.image_tag }}"
+          aws cloudformation deploy \
+            --template-file template.yaml \
+            --stack-name calculadora-staging-stack \
+            --parameter-overrides \
+              EnvironmentName=staging \
+              DockerImageUri=$IMAGE_URI \
+              LabRoleArn=${{ secrets.LAB_ROLE_ARN }} \
+              VpcId=${{ secrets.VPC_ID }} \
+              SubnetIds="${{ secrets.SUBNET_IDS }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changes
+
+      - name: Get Staging Stack Outputs
+        id: get_stack_outputs
+        run: |
+          if ! command -v jq &> /dev/null; then
+             sudo apt-get update && sudo apt-get install -y jq
+          fi
+          STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name calculadora-staging-stack --query "Stacks[0].Outputs" --region us-east-1 --output json)
+          ALB_URL=$(echo $STACK_OUTPUTS | jq -r '.[] | select(.OutputKey=="ALBDnsName") | .OutputValue')
+          if [ -z "$ALB_URL" ] || [ "$ALB_URL" == "null" ]; then
+            echo "Error: No se pudo obtener ALBDnsName del stack de Staging."
+            exit 1
+          fi
+          ALB_URL_HTTP="http://${ALB_URL}/"
+          echo "alb_url=${ALB_URL_HTTP}" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de Actualización Servicio Staging (ECS - Forzar despliegue)
+  # -------------------------------------
+  update-service-staging:
+    needs: [build-test-publish, deploy-cfn-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Force New Deployment ECS Service Staging
+        run: |
+          aws ecs update-service --cluster ${{ needs.deploy-cfn-staging.outputs.cluster_name_staging }} \
+                                --service ${{ needs.deploy-cfn-staging.outputs.service_name_staging }} \
+                                --force-new-deployment \
+                                --region us-east-1
+          aws ecs wait services-stable --cluster ${{ needs.deploy-cfn-staging.outputs.cluster_name_staging }} --services ${{ needs.deploy-cfn-staging.outputs.service_name_staging }} --region us-east-1
+
+  # -------------------------------------
+  # Job de Pruebas de Aceptación en Staging
+  # -------------------------------------
+  test-staging:
+    needs: [update-service-staging, deploy-cfn-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Acceptance Tests against Staging
+        env:
+          APP_BASE_URL: ${{ needs.deploy-cfn-staging.outputs.alb_url_staging }}
+        run: |
+          echo "Running acceptance tests against: $APP_BASE_URL"
+          sleep 30
+          pytest tests/test_acceptance_app.py
+
+  # -------------------------------------
+  # Job de Despliegue CloudFormation Producción
+  # -------------------------------------
+  deploy-cfn-prod:
+    needs: [build-test-publish, test-staging]
+    runs-on: ubuntu-latest
+    outputs:
+      alb_url_prod: ${{ steps.get_stack_outputs.outputs.alb_url }}
+      cluster_name_prod: "calculadora-production-cluster"
+      service_name_prod: "calculadora-production-service"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate CloudFormation Template
+        run: aws cloudformation validate-template --template-body file://template.yaml
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Deploy CloudFormation Production Stack
+        run: |
+          IMAGE_URI="${{ needs.build-test-publish.outputs.ecr_uri }}:${{ needs.build-test-publish.outputs.image_tag }}"
+          aws cloudformation deploy \
+            --template-file template.yaml \
+            --stack-name calculadora-prod-stack \
+            --parameter-overrides \
+              EnvironmentName=production \
+              DockerImageUri=$IMAGE_URI \
+              LabRoleArn=${{ secrets.LAB_ROLE_ARN }} \
+              VpcId=${{ secrets.VPC_ID }} \
+              SubnetIds="${{ secrets.SUBNET_IDS }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changes
+
+      - name: Get Production Stack Outputs
+        id: get_stack_outputs
+        run: |
+          if ! command -v jq &> /dev/null; then
+             sudo apt-get update && sudo apt-get install -y jq
+          fi
+          STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name calculadora-prod-stack --query "Stacks[0].Outputs" --region us-east-1 --output json)
+          ALB_URL=$(echo $STACK_OUTPUTS | jq -r '.[] | select(.OutputKey=="ALBDnsName") | .OutputValue')
+          if [ -z "$ALB_URL" ] || [ "$ALB_URL" == "null" ]; then
+            echo "Error: No se pudo obtener ALBDnsName del stack de Producción."
+            exit 1
+          fi
+          ALB_URL_HTTP="http://${ALB_URL}/"
+          echo "alb_url=${ALB_URL_HTTP}" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de Actualización Servicio Producción (ECS - Forzar despliegue)
+  # -------------------------------------
+  update-service-prod:
+    needs: [build-test-publish, deploy-cfn-prod]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Get Current Task Definition ARN
+        id: get_current_td
+        run: |
+          TD_ARN=$(aws ecs describe-services --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} --services ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} --query "services[0].taskDefinition" --output text)
+          echo "CURRENT_TD_ARN=$TD_ARN" >> $GITHUB_ENV
+          echo "current_td_arn=$TD_ARN" >> $GITHUB_OUTPUT
+
+      - name: Force New Deployment ECS Service Production
+        run: |
+          aws ecs update-service --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} \
+                                --service ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} \
+                                --force-new-deployment \
+                                --region us-east-1
+          aws ecs wait services-stable --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} --services ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} --region us-east-1
+
+  # -------------------------------------
+  # Job de Pruebas de Humo en Producción
+  # -------------------------------------
+  smoke-test-prod:
+    needs: [update-service-prod, deploy-cfn-prod]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Smoke Tests against Production
+        env:
+          APP_BASE_URL: ${{ needs.deploy-cfn-prod.outputs.alb_url_prod }}
+        run: |
+          echo "Running smoke tests against: $APP_BASE_URL"
+          sleep 30
+          pytest tests/test_smoke_app.py
+
+  # -------------------------------------
+  # Job de Rollback automático en caso de fallo en producción
+  # -------------------------------------
+  rollback-on-failure:
+    needs: smoke-test-prod
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Get Previous Task Definition ARN
+        id: get_previous_td
+        run: |
+          FAMILY="calculadora-production-task"
+          TD_ARN=$(aws ecs list-task-definitions --family-prefix $FAMILY --sort DESC --status ACTIVE --max-items 2 --region us-east-1 --query 'taskDefinitionArns[1]' --output text)
+          echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
+          echo "Previous Task Definition ARN: $TD_ARN"
+
+      - name: Rollback ECS Service to Previous Task Definition
+        run: |
+          aws ecs update-service --cluster calculadora-production-cluster \
+            --service calculadora-production-service \
+            --task-definition $PREVIOUS_TD_ARN \
+            --force-new-deployment \
+            --region us-east-1
+          aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
+
+      - name: Notify Rollback (Slack)
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_MESSAGE: "Rollback realizado a la task definition previa: $PREVIOUS_TD_ARN"
+
+# FIN DEL WORKFLOW

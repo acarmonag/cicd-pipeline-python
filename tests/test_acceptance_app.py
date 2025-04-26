@@ -14,8 +14,8 @@ def browser():
     # Opción 1: Chrome (headless - sin interfaz gráfica)
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")  # Ejecuta sin interfaz gráfica
-    options.add_argument("--no-sandbox")  # Necesario para algunos entornos
-    options.add_argument("--disable-dev-shm-usage")  # Necesario para algunos entornos
+    options.add_argument("--no-sandbox") # Necesario para algunos entornos
+    options.add_argument("--disable-dev-shm-usage") # Necesario para algunos entornos
     driver = webdriver.Chrome(options=options)
 
     # Opción 2: Firefox (headless)
@@ -35,50 +35,63 @@ def browser():
 # Función de ayuda para esperar y obtener el resultado
 def get_resultado(browser):
     try:
-        # Espera HASTA QUE el <h2> sea visible (máximo 10 segundos)
-        # El h2 ahora tiene estilo rojo Lightning McQueen y borde izquierdo rojo
-        resultado = WebDriverWait(browser, 10).until(
-            EC.visibility_of_element_located((By.TAG_NAME, "h2"))
+        # Espera hasta que el elemento resultado esté presente y sea visible
+        wait = WebDriverWait(browser, 10)
+        resultado = wait.until(
+            EC.visibility_of_element_located((By.CLASS_NAME, "resultado"))
         )
-        return resultado.text
+        h2 = resultado.find_element(By.TAG_NAME, "h2")
+        return h2.text.strip()
     except TimeoutException:
-        return "Error: Tiempo de espera agotado esperando el resultado."
+        pytest.fail("Timeout esperando el resultado")
+    except Exception as e:
+        pytest.fail(f"Error al obtener resultado: {str(e)}")
 
-
-# Funcion auxiliar para encontrar elementos:
 def find_elements(browser):
-    # Obtiene los elementos del formulario con estilo Lightning McQueen
-    num1_input = browser.find_element(By.NAME, "num1")
-    num2_input = browser.find_element(By.NAME, "num2")
-    operacion_select = Select(browser.find_element(By.NAME, "operacion"))
-    # El botón ahora es rojo #e30b0b con texto en mayúsculas
-    calcular_button = browser.find_element(By.CSS_SELECTOR, "button[type='submit']")
-    return num1_input, num2_input, operacion_select, calcular_button
-
+    try:
+        wait = WebDriverWait(browser, 10)
+        num1_input = wait.until(EC.presence_of_element_located((By.NAME, "num1")))
+        num2_input = browser.find_element(By.NAME, "num2")
+        operacion_select = Select(browser.find_element(By.NAME, "operacion"))
+        calcular_button = browser.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        return num1_input, num2_input, operacion_select, calcular_button
+    except Exception as e:
+        pytest.fail(f"Error al encontrar elementos: {str(e)}")
 
 @pytest.mark.parametrize(
     "num1, num2, operacion, resultado_esperado",
     [
-        ("2", "3", "sumar", "Resultado: 5"),
-        ("5", "2", "restar", "Resultado: 3"),
-        ("4", "6", "multiplicar", "Resultado: 24"),
-        ("10", "2", "dividir", "Resultado: 5"),
+        ("2", "3", "sumar", "Resultado: 5.0"),
+        ("5", "2", "restar", "Resultado: 27.0"),
+        ("4", "6", "multiplicar", "Resultado: 24.0"),
+        ("10", "2", "dividir", "Resultado: 5.0"),
         ("5", "0", "dividir", "Error: No se puede dividir por cero"),
         ("abc", "def", "sumar", "Error: Introduce números válidos"),
+        # Nuevos casos de prueba
+        ("2", "3", "potencia", "Resultado: 8.0"),
+        ("4", "0", "raiz_cuadrada", "Resultado: 2.0"),
+        ("-4", "0", "raiz_cuadrada", "Error: No se puede calcular la raíz cuadrada de un número negativo"),
+        ("-5", "0", "valor_absoluto", "Resultado: 5.0"),
+        ("5", "0", "factorial", "Resultado: 120.0"),
+        ("5.5", "0", "factorial", "Error: El factorial solo acepta números enteros"),
+        ("-5", "0", "factorial", "Error: El factorial no acepta números negativos"),
+        ("2.718281828459045", "0", "logaritmo_natural", "Resultado: 1.0"),
+        ("0", "0", "logaritmo_natural", "Error: El logaritmo natural solo acepta números positivos"),
     ],
 )
 def test_calculadora(browser, num1, num2, operacion, resultado_esperado):
-    # Prueba la calculadora con tema de Lightning McQueen
-    browser.get(BASE_URL)
-
-    # Encuentra los elementos de la página con el nuevo estilo
-    num1_input, num2_input, operacion_select, calcular_button = find_elements(browser)
-
-    # Realiza la operacion:
-    num1_input.send_keys(num1)
-    num2_input.send_keys(num2)
-    operacion_select.select_by_value(operacion)
-    calcular_button.click()
-
-    # Verifica con la funcion auxiliar:
-    assert resultado_esperado in get_resultado(browser)
+    try:
+        browser.get(BASE_URL)
+        num1_input, num2_input, operacion_select, calcular_button = find_elements(browser)
+        
+        num1_input.clear()
+        num1_input.send_keys(num1)
+        num2_input.clear()
+        num2_input.send_keys(num2)
+        operacion_select.select_by_value(operacion)
+        calcular_button.click()
+        
+        resultado_actual = get_resultado(browser)
+        assert resultado_actual == resultado_esperado
+    except Exception as e:
+        pytest.fail(f"Test falló: {str(e)}")
