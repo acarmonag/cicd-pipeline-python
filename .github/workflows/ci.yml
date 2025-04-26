@@ -25,6 +25,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
+          
 
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
