@@ -25,7 +25,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-          
+
 
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
@@ -98,8 +98,9 @@ jobs:
         run: |
           IMAGE_TAG=${{ github.sha }}
           ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
-          docker build -t $ECR_URI:$IMAGE_TAG -t $ECR_URI:prod .
+          docker build -t $ECR_URI:$IMAGE_TAG -t $ECR_URI:latest -t $ECR_URI:prod .
           docker push $ECR_URI:$IMAGE_TAG
+          docker push $ECR_URI:latest
           docker push $ECR_URI:prod
 
 
