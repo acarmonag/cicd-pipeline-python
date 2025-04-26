@@ -62,7 +62,7 @@ def find_elements(browser):
     "num1, num2, operacion, resultado_esperado",
     [
         ("2", "3", "sumar", "Resultado: 5.0"),
-        ("5", "2", "restar", "Resultado: 27.0"),
+        ("5", "2", "restar", "Resultado: 3.0"),
         ("4", "6", "multiplicar", "Resultado: 24.0"),
         ("10", "2", "dividir", "Resultado: 5.0"),
         ("5", "0", "dividir", "Error: No se puede dividir por cero"),
