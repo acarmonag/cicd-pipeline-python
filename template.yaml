@@ -180,7 +180,17 @@ Resources:
           Value: !Ref EnvironmentName
     DependsOn: # Asegura que el listener exista antes de crear el servicio
       - ALBListener
-
+  # --- Repositorio ECR para la imagen Docker ---
+  CalculadoraECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'calculadora-${EnvironmentName}'
+      ImageScanningConfiguration:
+        scanOnPush: true
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+          
 Outputs:
   ALBDnsName:
     Description: DNS Name of the Application Load Balancer
@@ -194,30 +204,9 @@ Outputs:
       Name: !Sub '${AWS::StackName}-ECSClusterName'
   ECSServiceName:
     Description: Name of the ECS Service
-    Value: !GetAtt ECSService.Name # Obtener el nombre completo del servicio
+    Value: !GetAtt ECSService.Name
     Export:
       Name: !Sub '${AWS::StackName}-ECSServiceName'
-
-Resources:
-  # --- Repositorio ECR para la imagen Docker ---
-  CalculadoraECRRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub 'calculadora-${EnvironmentName}'
-      ImageScanningConfiguration:
-        scanOnPush: true
-      Tags:
-        - Key: Environment
-          Value: !Ref EnvironmentName
-
-  # --- Grupo de Logs para ECS ---
-  ECSLogGroup:
-    # ...existing code...
-# ...existing code...
-
-Outputs:
-  ALBDnsName:
-    # ...existing code...
   ECRRepositoryUri:
     Description: URI del repositorio ECR creado para la Calculadora
     Value: !GetAtt CalculadoraECRRepository.RepositoryUri
