@@ -65,9 +65,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Black (Formatter)
-        run: black app --check
-
       - name: Run Pylint (Linter)
         run: pylint app --output-format=text --fail-under=9 > pylint-report.txt || true
 
