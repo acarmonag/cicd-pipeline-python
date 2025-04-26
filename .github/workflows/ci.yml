@@ -310,7 +310,7 @@ jobs:
 
       - name: Deploy CloudFormation Production Stack
         run: |
-          IMAGE_URI="${{ needs.build-test-publish.outputs.ecr_uri }}:${{ needs.build-test-publish.outputs.image_tag }}"
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:latest"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-prod-stack \
