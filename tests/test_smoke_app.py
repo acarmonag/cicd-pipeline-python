@@ -34,7 +34,7 @@ def test_smoke_test(browser):
     try:
         browser.get(app_url + "/")
         print(f"Título de la página: {browser.title}")
-        assert "Calcaladora" in browser.title # Verifica que el título contenga "Calculadora"
+        assert "Calculadora" in browser.title # Verifica que el título contenga "Calculadora"
         h1_element = browser.find_element(By.TAG_NAME, "h1")
         print(f"Texto H1: {h1_element.text}")
         assert h1_element.text == "Calculadora" # Verifica el texto del H1
