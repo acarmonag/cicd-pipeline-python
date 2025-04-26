@@ -96,9 +96,10 @@ jobs:
       - name: Build and push Docker image to ECR
         run: |
           IMAGE_TAG=${{ github.sha }}
-          docker build -t ${{ steps.get_ecr_uri.outputs.ecr_uri }}:$IMAGE_TAG -t ${{ steps.get_ecr_uri.outputs.ecr_uri }}:prod .
-          docker push ${{ steps.get_ecr_uri.outputs.ecr_uri }}:$IMAGE_TAG
-          docker push ${{ steps.get_ecr_uri.outputs.ecr_uri }}:prod
+          ECR_URI="${{ steps.get_ecr_uri.outputs.ecr_uri }}"
+          docker build -t $ECR_URI:$IMAGE_TAG -t $ECR_URI:prod .
+          docker push $ECR_URI:$IMAGE_TAG
+          docker push $ECR_URI:prod
 
       - name: Set image tag output
         id: set_tag
