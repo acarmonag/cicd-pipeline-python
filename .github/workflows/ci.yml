@@ -93,11 +93,6 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Get ECR Repository URI
-        id: get_ecr_uri
-        run: |
-          ECR_URI=$(aws cloudformation describe-stacks --stack-name calculadora-staging-stack --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text --region us-east-1)
-          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image to ECR
         run: |
