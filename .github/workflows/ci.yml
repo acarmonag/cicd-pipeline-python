@@ -430,14 +430,30 @@ jobs:
       - name: Rollback ECS Service to Previous Task Definition
         if: env.PREVIOUS_TD_ARN != ''
         run: |
-          # Intenta activar la definición inactiva registrando una nueva basada en la anterior
+          # Obtén la definición previa (INACTIVE)
           echo "Obteniendo definición previa (INACTIVE): $PREVIOUS_TD_ARN"
           aws ecs describe-task-definition --task-definition $PREVIOUS_TD_ARN --region us-east-1 --query 'taskDefinition' > prev_td.json
       
-          # Limpia el JSON para registrar una nueva definición (quita campos no permitidos)
-          cat prev_td.json | \
-            jq 'del(.status, .revision, .taskDefinitionArn, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
-            > new_td.json
+          # Más completa eliminación de campos no permitidos
+          cat prev_td.json | jq '{
+            family: .family,
+            taskRoleArn: .taskRoleArn,
+            executionRoleArn: .executionRoleArn,
+            networkMode: .networkMode,
+            containerDefinitions: .containerDefinitions,
+            volumes: .volumes,
+            placementConstraints: .placementConstraints,
+            requiresCompatibilities: .requiresCompatibilities,
+            cpu: .cpu,
+            memory: .memory,
+            tags: .tags,
+            pidMode: .pidMode,
+            ipcMode: .ipcMode,
+            proxyConfiguration: .proxyConfiguration,
+            inferenceAccelerators: .inferenceAccelerators,
+            ephemeralStorage: .ephemeralStorage,
+            runtimePlatform: .runtimePlatform
+          }' > new_td.json
       
           # Registra la nueva definición y obtiene el ARN
           NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://new_td.json --region us-east-1 --query 'taskDefinition.taskDefinitionArn' --output text)
@@ -450,7 +466,7 @@ jobs:
             --force-new-deployment \
             --region us-east-1
           aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
-      
+  
       - name: Delete Failed Task Definition (latest)
         if: env.PREVIOUS_TD_ARN != ''
         run: |
