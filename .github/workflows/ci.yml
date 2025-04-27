@@ -135,14 +135,6 @@ jobs:
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-
       - name: Esperar a que el stack esté listo antes de desplegar
         run: |
           STACK_NAME="calculadora-staging-stack"
@@ -170,8 +162,8 @@ jobs:
             sleep 10
           done
       - name: Debug image tag
-        run: echo "IMAGE_TAG: ${{ needs.build-test-publish.outputs.image_tag }}"
-        
+        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
+
       - name: Deploy CloudFormation Staging Stack
         run: |
           IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
@@ -278,14 +270,6 @@ jobs:
 
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
 
       - name: Esperar a que el stack esté listo antes de desplegar
         run: |
