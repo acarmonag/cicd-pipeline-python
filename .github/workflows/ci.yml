@@ -55,6 +55,10 @@ jobs:
         run: |
           ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora" >> $GITHUB_OUTPUT
 
+      - name: Set image tag output
+        id: set_tag
+        run: echo "image_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -165,7 +169,9 @@ jobs:
             fi
             sleep 10
           done
-
+      - name: Debug image tag
+        run: echo "IMAGE_TAG: ${{ needs.build-test-publish.outputs.image_tag }}"
+        
       - name: Deploy CloudFormation Staging Stack
         run: |
           IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
