@@ -431,12 +431,3 @@ jobs:
             --force-new-deployment \
             --region us-east-1
           aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
-
-      - name: Notify Rollback (Slack)
-        if: always()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_MESSAGE: "Rollback realizado a la task definition previa: $PREVIOUS_TD_ARN"
-
-# FIN DEL WORKFLOW
