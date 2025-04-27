@@ -416,7 +416,7 @@ jobs:
         id: get_previous_td
         run: |
               # Obtiene las dos últimas definiciones activas
-              TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix calculadora-production-task --sort DESC --status ACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
+              TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix calculadora-production-task --sort DESC --status INACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
               TD_ARN_ARRAY=($TD_ARN_LIST)
               if [ "${#TD_ARN_ARRAY[@]}" -lt 2 ]; then
                 echo "No previous Task Definition found. Skipping rollback."
