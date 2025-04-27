@@ -164,14 +164,12 @@ jobs:
 
       - name: Debug image tag
         run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
-
-      - name: TAG
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
+          
 
       - name: Deploy CloudFormation Staging Stack
         run: |
+          IMAGE_TAG=${{ github.sha }}
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
           IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
           aws cloudformation deploy \
             --template-file template.yaml \
@@ -305,15 +303,12 @@ jobs:
           done
 
       - name: Debug image tag
-        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
-
-      - name: TAG
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
+        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"    
 
       - name: Deploy CloudFormation Production Stack
         run: |
+          IMAGE_TAG=${{ github.sha }}
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
           IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
           aws cloudformation deploy \
             --template-file template.yaml \
