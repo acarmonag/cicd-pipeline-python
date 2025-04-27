@@ -161,12 +161,18 @@ jobs:
             fi
             sleep 10
           done
+
       - name: Debug image tag
         run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
 
+      - name: TAG
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
+
       - name: Deploy CloudFormation Staging Stack
         run: |
-          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          IMAGE_URI="ECR_URI:IMAGE_TAG"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-staging-stack \
@@ -298,9 +304,17 @@ jobs:
             sleep 10
           done
 
+      - name: Debug image tag
+        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
+        
+      - name: TAG
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora"
+
       - name: Deploy CloudFormation Production Stack
         run: |
-          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          IMAGE_URI="ECR_URI:IMAGE_TAG"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-prod-stack \
