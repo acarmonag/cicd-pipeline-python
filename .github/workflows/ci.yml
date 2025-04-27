@@ -419,11 +419,20 @@ jobs:
         id: get_previous_td
         run: |
           FAMILY="calculadora-production-task"
-          TD_ARN=$(aws ecs list-task-definitions --family-prefix $FAMILY --sort DESC --status ACTIVE --max-items 2 --region us-east-1 --query 'taskDefinitionArns[1]' --output text)
+          # Obtiene las dos últimas definiciones activas
+          TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix $FAMILY --sort DESC --status ACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
+          TD_ARN_ARRAY=($TD_ARN_LIST)
+          if [ "${#TD_ARN_ARRAY[@]}" -lt 2 ]; then
+            echo "No previous Task Definition found. Skipping rollback."
+            echo "PREVIOUS_TD_ARN=" >> $GITHUB_ENV
+            exit 0
+          fi
+          TD_ARN="${TD_ARN_ARRAY[1]}"
           echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
           echo "Previous Task Definition ARN: $TD_ARN"
 
       - name: Rollback ECS Service to Previous Task Definition
+        if: env.PREVIOUS_TD_ARN != ''
         run: |
           aws ecs update-service --cluster calculadora-production-cluster \
             --service calculadora-production-service \
@@ -431,3 +440,7 @@ jobs:
             --force-new-deployment \
             --region us-east-1
           aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
+
+      - name: Notify No Rollback Needed
+        if: env.PREVIOUS_TD_ARN == ''
+        run: echo "No previous Task Definition found. Rollback not performed."
