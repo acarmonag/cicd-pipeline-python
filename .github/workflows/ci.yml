@@ -168,7 +168,7 @@ jobs:
 
       - name: Deploy CloudFormation Staging Stack
         run: |
-          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:latest"
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-staging-stack \
@@ -283,7 +283,7 @@ jobs:
 
       - name: Esperar a que el stack esté listo antes de desplegar
         run: |
-          STACK_NAME="calculadora-staging-stack"
+          STACK_NAME="calculadora-prod-stack"
           REGION="us-east-1"
           echo "Esperando a que el stack $STACK_NAME esté en estado estable..."
           while true; do
@@ -310,7 +310,7 @@ jobs:
 
       - name: Deploy CloudFormation Production Stack
         run: |
-          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:latest"
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
           aws cloudformation deploy \
             --template-file template.yaml \
             --stack-name calculadora-prod-stack \
