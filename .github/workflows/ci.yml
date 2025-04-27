@@ -374,17 +374,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+  
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
+  
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+  
       - name: Run Smoke Tests against Production
         env:
           APP_BASE_URL: ${{ needs.deploy-cfn-prod.outputs.alb_url_prod }}
@@ -392,6 +392,15 @@ jobs:
           echo "Running smoke tests against: $APP_BASE_URL"
           sleep 30
           pytest tests/test_smoke_app.py
+  
+      - name: Retag Image as Stable if Smoke Tests Pass
+        if: success()
+        run: |
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          STABLE_TAG="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:stable"
+          echo "Retagging $IMAGE_URI as $STABLE_TAG"
+          aws ecr batch-get-image --repository-name calculadora --image-ids imageTag=${{ needs.build-test-publish.outputs.image_tag }} --region us-east-1 --query 'images[].imageManifest' --output text > imageManifest.json
+          aws ecr put-image --repository-name calculadora --image-tag stable --image-manifest file://imageManifest.json --region us-east-1
 
   # -------------------------------------
   # Job de Rollback automático en caso de fallo en producción
@@ -403,7 +412,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+  
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -411,40 +420,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-      
-      - name: Rollback to Previous Deployment
+  
+      - name: Rollback to Stable Image
         run: |
-          # Get current service details to check deployments
-          DEPLOYMENTS=$(aws ecs describe-services --cluster calculadora-production-cluster \
-            --services calculadora-production-service \
+          echo "Rolling back to stable image"
+          STABLE_IMAGE="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:stable"
+          aws ecs update-service --cluster calculadora-production-cluster \
+            --service calculadora-production-service \
+            --force-new-deployment \
             --region us-east-1 \
-            --query 'services[0].deployments')
-          
-          # Check if we have multiple deployments to roll back to
-          DEPLOYMENT_COUNT=$(echo $DEPLOYMENTS | jq 'length')
-          
-          if [ $DEPLOYMENT_COUNT -gt 1 ]; then
-            echo "Multiple deployments found, rolling back to previous deployment"
-            
-            # Using the rollback option which reverts to the last successful deployment
-            aws ecs update-service --cluster calculadora-production-cluster \
-              --service calculadora-production-service \
-              --region us-east-1 \
-              --force-new-deployment \
-              --deployment-configuration "rollbackOnFailure=ROLLBACK_ON_FAILURE"
-            
-            echo "Rollback initiated. Waiting for service to stabilize..."
-            aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
-            echo "Rollback complete!"
-          else
-            echo "No previous deployment found to roll back to."
-            
-            # Optional: Get deployment info for debugging
-            aws ecs describe-services --cluster calculadora-production-cluster \
-              --services calculadora-production-service \
-              --region us-east-1 \
-              --query 'services[0].deployments' \
-              --output json
-              
-            echo "Consider implementing a blue/green deployment strategy for more robust rollback capabilities."
-          fi
+            --desired-count 1 \
+            --task-definition $STABLE_IMAGE
+          aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
+          echo "Rollback to stable image complete!"
