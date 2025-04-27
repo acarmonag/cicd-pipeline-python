@@ -415,18 +415,17 @@ jobs:
       - name: Get Previous Task Definition ARN
         id: get_previous_td
         run: |
-          FAMILY="calculadora-production-task"
-          # Obtiene las dos últimas definiciones activas
-          TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix $FAMILY --sort DESC --status ACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
-          TD_ARN_ARRAY=($TD_ARN_LIST)
-          if [ "${#TD_ARN_ARRAY[@]}" -lt 2 ]; then
-            echo "No previous Task Definition found. Skipping rollback."
-            echo "PREVIOUS_TD_ARN=" >> $GITHUB_ENV
-            exit 0
-          fi
-          TD_ARN="${TD_ARN_ARRAY[1]}"
-          echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
-          echo "Previous Task Definition ARN: $TD_ARN"
+              # Obtiene las dos últimas definiciones activas
+              TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix calculadora-production-task --sort DESC --status ACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
+              TD_ARN_ARRAY=($TD_ARN_LIST)
+              if [ "${#TD_ARN_ARRAY[@]}" -lt 2 ]; then
+                echo "No previous Task Definition found. Skipping rollback."
+                echo "PREVIOUS_TD_ARN=" >> $GITHUB_ENV
+                exit 0
+              fi
+              TD_ARN="${TD_ARN_ARRAY[1]}"
+              echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
+              echo "Previous Task Definition ARN: $TD_ARN"
 
       - name: Rollback ECS Service to Previous Task Definition
         if: env.PREVIOUS_TD_ARN != ''
