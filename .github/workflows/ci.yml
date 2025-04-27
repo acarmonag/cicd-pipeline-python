@@ -403,7 +403,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+  
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -411,32 +411,53 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-
-      - name: Get Previous Task Definition ARN
+  
+      - name: Get Previous INACTIVE Task Definition ARN
         id: get_previous_td
         run: |
-              # Obtiene las dos últimas definiciones activas
-              TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix calculadora-production-task --sort DESC --status INACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
-              TD_ARN_ARRAY=($TD_ARN_LIST)
-              if [ "${#TD_ARN_ARRAY[@]}" -lt 2 ]; then
-                echo "No previous Task Definition found. Skipping rollback."
-                echo "PREVIOUS_TD_ARN=" >> $GITHUB_ENV
-                exit 0
-              fi
-              TD_ARN="${TD_ARN_ARRAY[1]}"
-              echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
-              echo "Previous Task Definition ARN: $TD_ARN"
-
+          FAMILY="calculadora-production-task"
+          TD_ARN_LIST=$(aws ecs list-task-definitions --family-prefix $FAMILY --sort DESC --status INACTIVE --region us-east-1 --max-items 2 --query 'taskDefinitionArns' --output text)
+          TD_ARN_ARRAY=($TD_ARN_LIST)
+          if [ "${#TD_ARN_ARRAY[@]}" -lt 1 ]; then
+            echo "No previous INACTIVE Task Definition found. Skipping rollback."
+            echo "PREVIOUS_TD_ARN=" >> $GITHUB_ENV
+            exit 0
+          fi
+          TD_ARN="${TD_ARN_ARRAY[0]}"
+          echo "PREVIOUS_TD_ARN=$TD_ARN" >> $GITHUB_ENV
+          echo "Previous Task Definition ARN: $TD_ARN"
+  
       - name: Rollback ECS Service to Previous Task Definition
         if: env.PREVIOUS_TD_ARN != ''
         run: |
+          # Intenta activar la definición inactiva registrando una nueva basada en la anterior
+          echo "Obteniendo definición previa (INACTIVE): $PREVIOUS_TD_ARN"
+          aws ecs describe-task-definition --task-definition $PREVIOUS_TD_ARN --region us-east-1 --query 'taskDefinition' > prev_td.json
+      
+          # Limpia el JSON para registrar una nueva definición (quita campos no permitidos)
+          cat prev_td.json | \
+            jq 'del(.status, .revision, .taskDefinitionArn, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            > new_td.json
+      
+          # Registra la nueva definición y obtiene el ARN
+          NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://new_td.json --region us-east-1 --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Nueva definición registrada: $NEW_TD_ARN"
+      
+          # Rollback usando la nueva definición activa
           aws ecs update-service --cluster calculadora-production-cluster \
             --service calculadora-production-service \
-            --task-definition $PREVIOUS_TD_ARN \
+            --task-definition $NEW_TD_ARN \
             --force-new-deployment \
             --region us-east-1
           aws ecs wait services-stable --cluster calculadora-production-cluster --services calculadora-production-service --region us-east-1
-
+      
+      - name: Delete Failed Task Definition (latest)
+        if: env.PREVIOUS_TD_ARN != ''
+        run: |
+          LATEST_TD_ARN=$(aws ecs list-task-definitions --family-prefix calculadora-production-task --sort DESC --status ACTIVE --region us-east-1 --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+          echo "Eliminando definición fallida: $LATEST_TD_ARN"
+          aws ecs deregister-task-definition --task-definition $LATEST_TD_ARN
+  
       - name: Notify No Rollback Needed
         if: env.PREVIOUS_TD_ARN == ''
-        run: echo "No previous Task Definition found. Rollback not performed."
+        run: echo "No previous INACTIVE Task Definition found. Rollback not performed."
