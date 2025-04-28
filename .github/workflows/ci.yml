@@ -26,6 +26,7 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
+
       - name: Validate CloudFormation Template
         run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
 
@@ -52,14 +53,11 @@ jobs:
       - name: Get ECR Repository URI
         id: get_ecr_uri
         run: |
-          echo "ecr_uri=730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora" >> $GITHUB_OUTPUT
+          ECR_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora" >> $GITHUB_OUTPUT
 
       - name: Set image tag output
         id: set_tag
         run: echo "image_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
-
-      - name: Debug image tag in build-test-publish
-        run: echo "Image Tag= ${{ steps.set_tag.outputs.image_tag }}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -99,6 +97,7 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+
       - name: Build and push Docker image to ECR
         run: |
           IMAGE_TAG=${{ github.sha }}
@@ -107,6 +106,264 @@ jobs:
           docker push $ECR_URI:$IMAGE_TAG
           docker push $ECR_URI:latest
           docker push $ECR_URI:prod
+
+
+
+  # -------------------------------------
+  # Job de Despliegue CloudFormation Staging
+  # -------------------------------------
+  deploy-cfn-staging:
+    needs: build-test-publish
+    runs-on: ubuntu-latest
+    outputs:
+      alb_url_staging: ${{ steps.get_stack_outputs.outputs.alb_url }}
+      cluster_name_staging: "calculadora-staging-cluster"
+      service_name_staging: "calculadora-staging-service"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Validate CloudFormation Template
+        run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
+
+      - name: Esperar a que el stack esté listo antes de desplegar
+        run: |
+          STACK_NAME="calculadora-staging-stack"
+          REGION="us-east-1"
+          echo "Esperando a que el stack $STACK_NAME esté en estado estable..."
+          while true; do
+            STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Estado actual: $STATUS"
+            if [[ "$STATUS" == "CREATE_COMPLETE" || "$STATUS" == "UPDATE_COMPLETE" || "$STATUS" == "NOT_FOUND" ]]; then
+              break
+            fi
+            if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]]; then
+              echo "El stack está en ROLLBACK_COMPLETE. Eliminando stack..."
+              aws cloudformation delete-stack --stack-name $STACK_NAME --region $REGION
+              while true; do
+                STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+                echo "Estado actual tras delete: $STATUS"
+                if [[ "$STATUS" == "NOT_FOUND" ]]; then
+                  break
+                fi
+                sleep 5
+              done
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Debug image tag
+        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}",
+          
+
+      - name: Deploy CloudFormation Staging Stack
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          aws cloudformation deploy \
+            --template-file template.yaml \
+            --stack-name calculadora-staging-stack \
+            --parameter-overrides \
+              EnvironmentName=staging \
+              DockerImageUri=$IMAGE_URI \
+              LabRoleArn=${{ secrets.LAB_ROLE_ARN }} \
+              VpcId=${{ secrets.VPC_ID }} \
+              SubnetIds="${{ secrets.SUBNET_IDS }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changes
+
+      - name: Get Staging Stack Outputs
+        id: get_stack_outputs
+        run: |
+          if ! command -v jq &> /dev/null; then
+             sudo apt-get update && sudo apt-get install -y jq
+          fi
+          STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name calculadora-staging-stack --query "Stacks[0].Outputs" --region us-east-1 --output json)
+          ALB_URL=$(echo $STACK_OUTPUTS | jq -r '.[] | select(.OutputKey=="ALBDnsName") | .OutputValue')
+          if [ -z "$ALB_URL" ] || [ "$ALB_URL" == "null" ]; then
+            echo "Error: No se pudo obtener ALBDnsName del stack de Staging."
+            exit 1
+          fi
+          ALB_URL_HTTP="http://${ALB_URL}/"
+          echo "alb_url=${ALB_URL_HTTP}" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de Actualización Servicio Staging (ECS - Forzar despliegue)
+  # -------------------------------------
+  update-service-staging:
+    needs: [build-test-publish, deploy-cfn-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Force New Deployment ECS Service Staging
+        run: |
+          aws ecs update-service --cluster ${{ needs.deploy-cfn-staging.outputs.cluster_name_staging }} \
+                                --service ${{ needs.deploy-cfn-staging.outputs.service_name_staging }} \
+                                --force-new-deployment \
+                                --region us-east-1
+          aws ecs wait services-stable --cluster ${{ needs.deploy-cfn-staging.outputs.cluster_name_staging }} --services ${{ needs.deploy-cfn-staging.outputs.service_name_staging }} --region us-east-1
+
+  # -------------------------------------
+  # Job de Pruebas de Aceptación en Staging
+  # -------------------------------------
+  test-staging:
+    needs: [update-service-staging, deploy-cfn-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Acceptance Tests against Staging
+        env:
+          APP_BASE_URL: ${{ needs.deploy-cfn-staging.outputs.alb_url_staging }}
+        run: |
+          echo "Running acceptance tests against: $APP_BASE_URL"
+          sleep 30
+          pytest tests/test_acceptance_app.py
+
+  # -------------------------------------
+  # Job de Despliegue CloudFormation Producción
+  # -------------------------------------
+  deploy-cfn-prod:
+    needs: [build-test-publish, test-staging]
+    runs-on: ubuntu-latest
+    outputs:
+      alb_url_prod: ${{ steps.get_stack_outputs.outputs.alb_url }}
+      cluster_name_prod: "calculadora-production-cluster"
+      service_name_prod: "calculadora-production-service"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Validate CloudFormation Template
+        run: aws cloudformation validate-template --region us-east-1 --template-body file://template.yaml
+
+      - name: Esperar a que el stack esté listo antes de desplegar
+        run: |
+          STACK_NAME="calculadora-prod-stack"
+          REGION="us-east-1"
+          echo "Esperando a que el stack $STACK_NAME esté en estado estable..."
+          while true; do
+            STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Estado actual: $STATUS"
+            if [[ "$STATUS" == "CREATE_COMPLETE" || "$STATUS" == "UPDATE_COMPLETE" || "$STATUS" == "NOT_FOUND" ]]; then
+              break
+            fi
+            if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]]; then
+              echo "El stack está en ROLLBACK_COMPLETE. Eliminando stack..."
+              aws cloudformation delete-stack --stack-name $STACK_NAME --region $REGION
+              while true; do
+                STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --region $REGION --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+                echo "Estado actual tras delete: $STATUS"
+                if [[ "$STATUS" == "NOT_FOUND" ]]; then
+                  break
+                fi
+                sleep 5
+              done
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Debug image tag
+        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
+
+      - name: Deploy CloudFormation Production Stack
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          aws cloudformation deploy \
+            --template-file template.yaml \
+            --stack-name calculadora-prod-stack \
+            --parameter-overrides \
+              EnvironmentName=production \
+              DockerImageUri=$IMAGE_URI \
+              LabRoleArn=${{ secrets.LAB_ROLE_ARN }} \
+              VpcId=${{ secrets.VPC_ID }} \
+              SubnetIds="${{ secrets.SUBNET_IDS }}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changes
+
+      - name: Get Production Stack Outputs
+        id: get_stack_outputs
+        run: |
+          if ! command -v jq &> /dev/null; then
+             sudo apt-get update && sudo apt-get install -y jq
+          fi
+          STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name calculadora-prod-stack --query "Stacks[0].Outputs" --region us-east-1 --output json)
+          ALB_URL=$(echo $STACK_OUTPUTS | jq -r '.[] | select(.OutputKey=="ALBDnsName") | .OutputValue')
+          if [ -z "$ALB_URL" ] || [ "$ALB_URL" == "null" ]; then
+            echo "Error: No se pudo obtener ALBDnsName del stack de Producción."
+            exit 1
+          fi
+          ALB_URL_HTTP="http://${ALB_URL}/"
+          echo "alb_url=${ALB_URL_HTTP}" >> $GITHUB_OUTPUT
+
+  # -------------------------------------
+  # Job de Actualización Servicio Producción (ECS - Forzar despliegue)
+  # -------------------------------------
+  update-service-prod:
+    needs: [build-test-publish, deploy-cfn-prod]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Get Current Task Definition ARN
+        id: get_current_td
+        run: |
+          TD_ARN=$(aws ecs describe-services --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} --services ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} --query "services[0].taskDefinition" --output text)
+          echo "CURRENT_TD_ARN=$TD_ARN" >> $GITHUB_ENV
+          echo "current_td_arn=$TD_ARN" >> $GITHUB_OUTPUT
+
+      - name: Force New Deployment ECS Service Production
+        run: |
+          aws ecs update-service --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} \
+                                --service ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} \
+                                --force-new-deployment \
+                                --region us-east-1
+          aws ecs wait services-stable --cluster ${{ needs.deploy-cfn-prod.outputs.cluster_name_prod }} --services ${{ needs.deploy-cfn-prod.outputs.service_name_prod }} --region us-east-1
 
   # -------------------------------------
   # Job de Pruebas de Humo en Producción
@@ -142,11 +399,13 @@ jobs:
       - name: Retag Image as Stable if Smoke Tests Pass
         if: success()
         run: |
-          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ needs.build-test-publish.outputs.image_tag }}"
+          IMAGE_TAG=${{ github.sha }}
+          IMAGE_URI="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:${{ github.sha }}"
           STABLE_TAG="730335351698.dkr.ecr.us-east-1.amazonaws.com/calculadora:stable"
           echo "Retagging $IMAGE_URI as $STABLE_TAG"
           aws ecr batch-get-image --repository-name calculadora --image-ids imageTag=${{ needs.build-test-publish.outputs.image_tag }} --region us-east-1 --query 'images[].imageManifest' --output text > imageManifest.json
           aws ecr put-image --repository-name calculadora --image-tag stable --image-manifest file://imageManifest.json --region us-east-1
+
   # -------------------------------------
   # Job de Rollback automático en caso de fallo en producción
   # -------------------------------------
