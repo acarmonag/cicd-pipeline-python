@@ -59,7 +59,7 @@ jobs:
         run: echo "image_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
       - name: Debug image tag in build-test-publish
-        run: echo "Image Tag: ${{ steps.set_tag.outputs.image_tag }}"
+        run: echo "Image Tag= ${{ steps.set_tag.outputs.image_tag }}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
