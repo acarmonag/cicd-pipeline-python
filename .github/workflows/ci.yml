@@ -163,7 +163,7 @@ jobs:
           done
 
       - name: Debug image tag
-        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}",
+        run: echo "image_tag= ${{ steps.set_tag.outputs.image_tag }}",
           
 
       - name: Deploy CloudFormation Staging Stack
@@ -302,7 +302,7 @@ jobs:
           done
 
       - name: Debug image tag
-        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
+        run: echo "image_tag= ${{ steps.set_tag.outputs.image_tag }}"
 
       - name: Deploy CloudFormation Production Stack
         run: |
@@ -393,8 +393,11 @@ jobs:
           sleep 30
           pytest tests/test_smoke_app.py
 
+      - name: Debug outputs from build-test-publish
+        run: echo "Outputs= ${{ toJson(needs.build-test-publish.outputs) }}"
+
       - name: Debug image tag
-        run: echo "IMAGE_TAG= ${{ needs.build-test-publish.outputs.image_tag }}"
+        run: echo "image_tag= ${{ steps.set_tag.outputs.image_tag }}"
   
       - name: Retag Image as Stable if Smoke Tests Pass
         if: success()
