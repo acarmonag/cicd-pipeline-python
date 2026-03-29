@@ -22,17 +22,15 @@ Parameters:
     Description: Lista de al menos DOS IDs de subredes PuBLICAS de la VPC por defecto en diferentes AZs.
 
 Resources:
-  # --- Grupo de Logs para ECS ---
   ECSLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/calculadora-${EnvironmentName}-task'
-      RetentionInDays: 7 # Retener logs por 7 días (ajusta si es necesario)
+      RetentionInDays: 7
       Tags:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # --- Cluster ECS ---
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -41,8 +39,6 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # --- Seguridad ---
-  # Security Group para el Load Balancer (permite HTTP desde internet)
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -58,7 +54,6 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # Security Group para el Servicio ECS (permite trafico desde el ALB en el puerto 8000)
   ECSServiceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -67,19 +62,18 @@ Resources:
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 8000 # Puerto del contenedor
+          FromPort: 8000
           ToPort: 8000
           SourceSecurityGroupId: !Ref ALBSecurityGroup # Solo permite desde el ALB SG
       Tags:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # --- Load Balancer ---
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub 'calculadora-${EnvironmentName}-alb'
-      Subnets: !Ref SubnetIds # Debe estar en subredes publicas
+      Subnets: !Ref SubnetIds
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Scheme: internet-facing
@@ -88,7 +82,6 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # Listener HTTP en el puerto 80
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -99,52 +92,47 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref ECSTargetGroup
 
-# Target Group para las tareas ECS
   ECSTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub 'tg-ecs-${EnvironmentName}'
       VpcId: !Ref VpcId
-      Port: 8000 # Puerto del contenedor
+      Port: 8000
       Protocol: HTTP
-      TargetType: ip # Necesario para Fargate
-      # --- Propiedades de Health Check (CORREGIDO) ---
+      TargetType: ip
       HealthCheckEnabled: true
       HealthCheckPath: /health # Endpoint de health check de la app
-      HealthCheckPort: '8000' # Puerto del contenedor
+      HealthCheckPort: '8000'
       HealthCheckProtocol: HTTP
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 2
-      HealthCheckIntervalSeconds: 15 # Nombre corregido
-      HealthCheckTimeoutSeconds: 5  # Nombre corregido
-      # --- Fin Propiedades de Health Check ---
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
       Tags:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # --- Definicion de Tarea ECS ---
   ECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition
-    DependsOn: ECSLogGroup # Asegura que el Log Group exista primero
+    DependsOn: ECSLogGroup
     Properties:
       Family: !Sub 'calculadora-${EnvironmentName}-task'
       RequiresCompatibilities:
         - FARGATE
       NetworkMode: awsvpc
-      Cpu: '256' # 0.25 vCPU (minimo Fargate)
-      Memory: '512' # 0.5 GB (minimo Fargate)
-      TaskRoleArn: !Ref LabRoleArn # Rol para permisos DENTRO del contenedor (si necesita llamar a otros servicios AWS)
-      ExecutionRoleArn: !Ref LabRoleArn # Rol para que ECS/Fargate pueda descargar imagen, enviar logs, etc.
+      Cpu: '256'
+      Memory: '512'
+      TaskRoleArn: !Ref LabRoleArn
+      ExecutionRoleArn: !Ref LabRoleArn
       ContainerDefinitions:
         - Name: !Sub 'calculadora-${EnvironmentName}-container'
-          Image: !Ref DockerImageUri # Imagen de Docker Hub
+          Image: !Ref DockerImageUri
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              # Usar !Ref para hacer referencia al Log Group creado
               awslogs-group: !Ref ECSLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
@@ -152,35 +140,32 @@ Resources:
         - Key: Environment
           Value: !Ref EnvironmentName
 
-  # --- Servicio ECS ---
   ECSService:
     Type: AWS::ECS::Service
     Properties:
       ServiceName: !Sub 'calculadora-${EnvironmentName}-service'
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref ECSTaskDefinition
-      DesiredCount: 1 # Numero inicial de tareas
+      DesiredCount: 1
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED # Necesario en subredes publicas sin NAT Gateway
-          Subnets: !Ref SubnetIds # Las mismas subredes publicas del ALB
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
           SecurityGroups:
             - !Ref ECSServiceSecurityGroup
       LoadBalancers:
         - ContainerName: !Sub 'calculadora-${EnvironmentName}-container'
           ContainerPort: 8000
           TargetGroupArn: !Ref ECSTargetGroup
-      # DesiredCount y TaskDefinition se actualizan en despliegues posteriores
       DeploymentConfiguration:
-        MinimumHealthyPercent: 50 # Permite que baje al 50% durante el deploy
-        MaximumPercent: 200 # Permite que suba al 200% temporalmente
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       Tags:
         - Key: Environment
           Value: !Ref EnvironmentName
-    DependsOn: # Asegura que el listener exista antes de crear el servicio
+    DependsOn:
       - ALBListener
-  # --- Repositorio ECR para la imagen Docker ---
   CalculadoraECRRepository:
     Type: AWS::ECR::Repository
     Properties:
